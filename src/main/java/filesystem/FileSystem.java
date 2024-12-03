@@ -164,7 +164,7 @@ public class FileSystem {
     /**
      * Add your Javadoc documentation for this method
      */
-    private int[] allocateBlocksForFile(int iNodeNumber, int numBytes)
+    public int[] allocateBlocksForFile(int iNodeNumber, int numBytes)
             throws IOException {
 
         // TODO: replace this line with your code
@@ -175,7 +175,7 @@ public class FileSystem {
     /**
      * Add your Javadoc documentation for this method
      */
-    private void deallocateBlocksForFile(int iNodeNumber) {
+    public void deallocateBlocksForFile(int iNodeNumber) {
         // TODO: replace this line with your code
     }
 
