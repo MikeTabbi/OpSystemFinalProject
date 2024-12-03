@@ -2,7 +2,7 @@ package filesystem;
 
 import java.io.IOException;
 
-
+//create wrapper or changed private to public
 public class FileSystem {
     private Disk diskDevice;
 
@@ -164,17 +164,22 @@ public class FileSystem {
     /**
      * Add your Javadoc documentation for this method
      */
+    //public
     private int[] allocateBlocksForFile(int iNodeNumber, int numBytes)
             throws IOException {
 
         // TODO: replace this line with your code
                 //Ceasar be taking this
+                // Churros
+    //public void allocateBlock(int INodeNumber):
+    //            return allocateBlocksForFile(INodeNumber)
         return null;
     }
 
     /**
      * Add your Javadoc documentation for this method
      */
+    //public
     private void deallocateBlocksForFile(int iNodeNumber) {
         // TODO: replace this line with your code
     }
