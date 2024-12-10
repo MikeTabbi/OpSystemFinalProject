@@ -147,7 +147,36 @@ public class FileSystem {
      */
     public String read(int fileDescriptor) throws IOException {
         // TODO: Replace this line with your code
-        return null;
+        INode inode = diskDevice.readInode(fileDescriptor);
+        if (inode == null || inode.getFileName() == null) {
+            throw new IOException("FileSystem::read: Invalid file descriptor or file does not exist.");
+        }
+
+        int fileSize = inode.getSize();
+        StringBuilder fileData = new StringBuilder();
+
+        int fullBlocks = fileSize / Disk.BLOCK_SIZE;
+        int remainingBytes = fileSize % Disk.BLOCK_SIZE;
+
+        for (int i = 0; i < fullBlocks; i++) {
+            int blockNumber = inode.getBlockPointer(i);
+            if (blockNumber == -1) {
+                throw new IOException("FileSystem::read: Block pointer not valid at index " + i);
+            }
+            byte[] blockData = diskDevice.readDataBlock(blockNumber);
+            fileData.append(new String(blockData));
+        }
+
+        if (remainingBytes > 0) {
+            int blockNumber = inode.getBlockPointer(fullBlocks);
+            if (blockNumber == -1) {
+                throw new IOException("FileSystem::read: Block pointer not valid at index " + fullBlocks);
+            }
+            byte[] blockData = diskDevice.readDataBlock(blockNumber);
+            fileData.append(new String(blockData, 0, remainingBytes));
+        }
+
+        return fileData.toString();
     }
 
 
@@ -157,8 +186,43 @@ public class FileSystem {
     public void write(int fileDescriptor, String data) throws IOException {
 
         // TODO: Replace this line with your code
+        INode inode = diskDevice.readInode(fileDescriptor);
+        if (inode == null || inode.getFileName() == null) {
+            throw new IOException("FileSystem::write: Invalid file descriptor or file does not exist.");
+        }
 
+        byte[] dataBytes = data.getBytes();
+        int dataSize = dataBytes.length;
+
+        int fullBlocks = dataSize / Disk.BLOCK_SIZE;
+        int remainingBytes = dataSize % Disk.BLOCK_SIZE;
+        int totalBlocksNeeded = (remainingBytes > 0) ? fullBlocks + 1 : fullBlocks;
+
+        int[] allocatedBlocks = allocateBlocksForFile(fileDescriptor, dataSize);
+
+        if (allocatedBlocks.length < totalBlocksNeeded) {
+            throw new IOException("FileSystem::write: Not enough free blocks available to write the data.");
+        }
+
+        int dataOffset = 0;
+        for (int i = 0; i < totalBlocksNeeded; i++) {
+            int blockNumber = allocatedBlocks[i];
+            int bytesToWrite = (i == fullBlocks) ? remainingBytes : Disk.BLOCK_SIZE;
+
+            byte[] blockData = new byte[Disk.BLOCK_SIZE];
+            System.arraycopy(dataBytes, dataOffset, blockData, 0, bytesToWrite);
+
+            diskDevice.writeDataBlock(blockData, blockNumber);
+
+            inode.setBlockPointer(i, blockNumber);
+
+            dataOffset += bytesToWrite;
+        }
+
+        inode.setSize(dataSize);
+        diskDevice.writeInode(inode, fileDescriptor);
     }
+
 
 
     /**
