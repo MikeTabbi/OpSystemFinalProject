@@ -169,6 +169,92 @@ public class FileSystem {
             throws IOException {
 
         // TODO: replace this line with your code
+
+        int numOfBlocksNeeded = (int) Math.ceil((double) numBytes / Disk.BLOCK_SIZE);
+
+        if (numBytes < 0) {
+            throw new IllegalArgumentException("Number of bytes cannot be negative");
+        }
+
+        if (numOfBlocksNeeded == 0) {
+            numOfBlocksNeeded = 1;
+        }
+
+        int[] blockPointers = new int[numOfBlocksNeeded];
+        int allocatedCount = 0;
+
+        while (allocatedCount < numOfBlocksNeeded) {
+            int blockIndex = freeBlockList.getNextFreeBlock();
+
+            if (blockIndex == -1) {
+
+                for (int i = 0; i < allocatedCount; i++) {
+                    freeBlockList.deallocateBlock(blockPointers[i]);
+                }
+                throw new IOException("Not enough free blocks available");
+            }
+
+            blockPointers[allocatedCount] = blockIndex;
+            freeBlockList.allocateBlock(blockIndex);
+            allocatedCount++;
+        }
+
+        try {
+            for (int i = 0; i < numOfBlocksNeeded; i++) {
+                iNodeForFile.setBlockPointer(i, blockPointers[i]);
+            }
+            iNodeForFile.setSize(numBytes);
+
+            diskDevice.writeFreeBlockList(freeBlockList.getFreeBlockList());
+
+            return blockPointers;
+        } catch (Exception e) {
+
+            for (int i = 0; i < numOfBlocksNeeded; i++) {
+                freeBlockList.deallocateBlock(blockPointers[i]);
+            }
+            throw new IOException("Failed to update", e);
+        }
+    }
+    public class FreeBlockList {
+        private byte[] freeBlockList;
+
+        public int getNextFreeBlock() {
+            if (freeBlockList == null) {
+                return -1;
+            }
+
+            for (int byteIndex = 0; byteIndex < freeBlockList.length; byteIndex++) {
+                byte currentByte = freeBlockList[byteIndex];
+
+                if ((currentByte & 0xFF) != 0xFF) {
+
+                    for (int bitIndex = 0; bitIndex < 8; bitIndex++) {
+
+                        if ((currentByte & (1 << bitIndex)) == 0) {
+
+                            return (byteIndex * 8) + bitIndex;
+                        }
+                    }
+                }
+            }
+
+
+            return -1;
+        }
+
+        public void allocateBlock(int blockNumber) {
+            if (blockNumber < 0 || freeBlockList == null) {
+                return;
+            }
+
+            int byteIndex = blockNumber / 8;
+            int bitIndex = blockNumber % 8;
+
+            if (byteIndex < freeBlockList.length) {
+                freeBlockList[byteIndex] |= (1 << bitIndex);
+            }
+        }
                 //Ceasar be taking this
                 // Churros
     //public void allocateBlock(int INodeNumber):
