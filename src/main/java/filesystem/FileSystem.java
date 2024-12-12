@@ -220,6 +220,7 @@ public class FileSystem {
 
         inode.setSize(dataSize);
         diskDevice.writeInode(inode, fileDescriptor);
+        //updated
     }
 
 
