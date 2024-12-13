@@ -1,88 +1,85 @@
-//package filesystem;
 import filesystem.FileSystem;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.testng.annotations.Test;
 
 import java.io.IOException;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.testng.AssertJUnit.assertEquals;
+import static org.testng.AssertJUnit.fail;
 
-public class FileSystemTest {
 
-    private FileSystem fileSystem;
+class FileSystemTest {
 
-    @Before
-    public void setUp() throws IOException {
-        this.fileSystem = new FileSystem();
-    }
-
-    @Test
-    public void testRead() throws IOException {
-        String fileName = "testFile.txt";
-        String content = "This is a test content.";
-        int fd = fileSystem.create(fileName);
-        fileSystem.write(fd, content);
-        fileSystem.close(fd);
-
-        fd = fileSystem.open(fileName);
-        String readContent = fileSystem.read(fd);
-        fileSystem.close(fd);
-
-        assertEquals(content, readContent);
-    }
-
-    @Test
-    public void testWrite() throws IOException {
-        String fileName = "writeTestFile.txt";
-        String content = "Write operation test content.";
-        int fd = fileSystem.create(fileName);
-        fileSystem.write(fd, content);
-        fileSystem.close(fd);
-
-        fd = fileSystem.open(fileName);
-        String readContent = fileSystem.read(fd);
-        fileSystem.close(fd);
-
-        assertEquals(content, readContent);
-    }
-
-    @Test
-    public void testAllocateBlocksForFile() throws IOException {
-        String fileName = "allocateTestFile.txt";
-        String content = "This content tests block allocation functionality.";
-        int fd = fileSystem.create(fileName);
-        fileSystem.write(fd, content);
-        fileSystem.close(fd);
-
-        fd = fileSystem.open(fileName);
-        String readContent = fileSystem.read(fd);
-        fileSystem.close(fd);
-
-        assertEquals(content, readContent);
-    }
-
-    @Test
-    public void testDeallocateBlocksForFile() throws IOException {
-        String fileName = "deallocateTestFile.txt";
-        String content = "This content tests block deallocation functionality.";
-        int fd = fileSystem.create(fileName);
-        fileSystem.write(fd, content);
-        fileSystem.close(fd);
-
-        fileSystem.delete(fileName);
-
-        fd = fileSystem.open(fileName);
+    @org.junit.jupiter.api.Test
+    void read() {
         try {
-            fileSystem.read(fd);
-            fail("Expected IOException for accessing a deleted file.");
-        } catch (IOException e) {
-            assertTrue(e.getMessage().contains("Invalid file descriptor"));
+
+            FileSystem fs = new FileSystem();
+            String fileName = "testFile.txt";
+            int fileDescriptor = fs.create(fileName);
+            String dataToWrite = "This is test data for the file system.";
+            fs.write(fileDescriptor, dataToWrite);
+            String dataRead = fs.read(fileDescriptor);
+            assertEquals(dataToWrite, dataRead);
+
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            fail("IOException occurred: " + ioe.getMessage());
         }
     }
 
-    @After
-    public void tearDown() {
-        this.fileSystem = null;
+    @org.junit.jupiter.api.Test
+    void write() {
+        try {
+            FileSystem fs = new FileSystem();
+            String fileName = "writeTestFile.txt";
+            int fileDescriptor = fs.create(fileName);
+            String dataToWrite = "Testing the write function.";
+            fs.write(fileDescriptor, dataToWrite);
+            String dataRead = fs.read(fileDescriptor);
+            assertEquals(dataToWrite, dataRead, "Testing the write function.");
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            fail("IOException occurred: " + ioe.getMessage());
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    void testAllocateBlocksForFile() {
+        try {
+            FileSystem fs = new FileSystem();
+            String fileName = "allocationTestFile.txt";
+            int fileDescriptor = fs.create(fileName);
+            String dataToWrite = "This is a test for block allocation.";
+            fs.write(fileDescriptor, dataToWrite);
+            String dataRead = fs.read(fileDescriptor);
+            assertEquals(dataToWrite, dataRead, "This is a test for block allocation.");
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            fail("IOException occurred: " + ioe.getMessage());
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    void testDeallocateBlocksForFile() {
+        try {
+            FileSystem fs = new FileSystem();
+            String fileName = "deallocationTestFile.txt";
+            int fileDescriptor = fs.create(fileName);
+            String dataToWrite = "This data will be deallocated.";
+            fs.write(fileDescriptor, dataToWrite);
+
+            // Deallocate the file and try to read/write again
+            fs.delete(fileName);
+
+            IOException exception = assertThrows(IOException.class, () -> fs.read(fileDescriptor));
+            assertEquals("FileSystem::read: Invalid file descriptor or inode is null.", exception.getMessage());
+
+            exception = assertThrows(IOException.class, () -> fs.write(fileDescriptor, "New Data"));
+            assertEquals("FileSystem::write: Invalid file descriptor or inode is null.", exception.getMessage());
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            fail("IOException occurred: " + ioe.getMessage());
+        }
     }
 }

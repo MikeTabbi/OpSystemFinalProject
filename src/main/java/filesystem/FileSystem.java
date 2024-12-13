@@ -163,7 +163,7 @@ public class FileSystem {
         byte[] fileData = new byte[fileSize];
         int bytesRead = 0;
 
-        // Read from each allocated block
+
         for (int i = 0; i < INode.NUM_BLOCK_POINTERS && bytesRead < fileSize; i++) {
             int blockNumber = inode.getBlockPointer(i);
             if (blockNumber == -1) break;
@@ -171,10 +171,9 @@ public class FileSystem {
             // Read the block data
             byte[] blockData = diskDevice.readDataBlock(blockNumber);
 
-            // Calculate how many bytes to read from this block
+
             int bytesToRead = Math.min(Disk.BLOCK_SIZE, fileSize - bytesRead);
 
-            // Copy from blockData to fileData
             System.arraycopy(blockData, 0, fileData, bytesRead, bytesToRead);
             bytesRead += bytesToRead;
         }
