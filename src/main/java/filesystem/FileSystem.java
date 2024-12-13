@@ -1,6 +1,9 @@
 package filesystem;
 
 import java.io.IOException;
+import java.lang.*;
+import java.util.ArrayList;
+import java.util.List;
 
 
 public class FileSystem {
@@ -29,10 +32,11 @@ public class FileSystem {
         for (int i = 0; i < Disk.NUM_INODES && !isCreated; i++) {
             tmpINode = diskDevice.readInode(i);
             String name = tmpINode.getFileName();
-            if (name.trim().equals(fileName)){
-                throw new IOException("FileSystem::create: "+fileName+
-                        " already exists");
-            } else if (tmpINode.getFileName() == null) {
+
+            // The Fix: Add a null check before calling trim()
+            if (name != null && name.trim().equals(fileName)) {
+                throw new IOException("FileSystem::create: " + fileName + " already exists");
+            } else if (tmpINode.getFileName() == null) { // No need for trim() here since we already checked for null
                 this.iNodeForFile = new INode();
                 this.iNodeForFile.setFileName(fileName);
                 this.iNodeNumber = i;
@@ -143,42 +147,161 @@ public class FileSystem {
 
 
     /**
-     * Add your Javadoc documentation for this method
+     * Reads file and outputs as a String
+     *
+     * @return
+     * @param fileDescriptor
+     * @throws IOException
      */
     public String read(int fileDescriptor) throws IOException {
-        // TODO: Replace this line with your code
-        return null;
-    }
+        if (fileDescriptor != this.iNodeNumber || this.iNodeForFile == null) {
+            throw new IOException("FileSystem::read: Invalid file descriptor or inode is null.");
+        }
 
+        INode inode = this.iNodeForFile;
+        int fileSize = inode.getSize();
+        byte[] fileData = new byte[fileSize];
+        int bytesRead = 0;
+
+
+        for (int i = 0; i < INode.NUM_BLOCK_POINTERS && bytesRead < fileSize; i++) {
+            int blockNumber = inode.getBlockPointer(i);
+            if (blockNumber == -1) break;
+
+            // Read the block data
+            byte[] blockData = diskDevice.readDataBlock(blockNumber);
+
+
+            int bytesToRead = Math.min(Disk.BLOCK_SIZE, fileSize - bytesRead);
+
+            System.arraycopy(blockData, 0, fileData, bytesRead, bytesToRead);
+            bytesRead += bytesToRead;
+        }
+
+        return new String(fileData);
+    }
 
     /**
      * Add your Javadoc documentation for this method
      */
     public void write(int fileDescriptor, String data) throws IOException {
+        if (fileDescriptor != this.iNodeNumber || this.iNodeForFile == null) {
+            throw new IOException("FileSystem::write: Invalid file descriptor or inode is null.");
+        }
 
-        // TODO: Replace this line with your code
+        byte[] dataBytes = data.getBytes();
+        int requiredBlocks = (int) Math.ceil((double) dataBytes.length / Disk.BLOCK_SIZE);
 
+        // First deallocate any existing blocks
+        deallocateBlocksForFile(this.iNodeNumber);
+
+        // Allocate new blocks
+        int[] allocatedBlocks = allocateBlocksForFile(this.iNodeNumber, dataBytes.length);
+
+        // Write data to blocks
+        int bytesWritten = 0;
+        for (int i = 0; i < allocatedBlocks.length && bytesWritten < dataBytes.length; i++) {
+            byte[] blockData = new byte[Disk.BLOCK_SIZE]; // Create a full-size block
+            int bytesToWrite = Math.min(Disk.BLOCK_SIZE, dataBytes.length - bytesWritten);
+
+            // Copy the next chunk of data into the block
+            System.arraycopy(dataBytes, bytesWritten, blockData, 0, bytesToWrite);
+
+            // Write the block to disk
+            diskDevice.writeDataBlock(blockData, allocatedBlocks[i]);
+
+            // Update inode with block pointer
+            this.iNodeForFile.setBlockPointer(i, allocatedBlocks[i]);
+
+            bytesWritten += bytesToWrite;
+        }
+
+        // Update file size and save inode
+        this.iNodeForFile.setSize(dataBytes.length);
+        diskDevice.writeInode(this.iNodeForFile, this.iNodeNumber);
     }
-
 
     /**
      * Add your Javadoc documentation for this method
      */
-    public int[] allocateBlocksForFile(int iNodeNumber, int numBytes)
-            throws IOException {
+    private int[] allocateBlocksForFile(int iNodeNumber, int numBytes) throws IOException {
+        if (iNodeNumber < 0 || iNodeNumber >= Disk.NUM_INODES) {
+            throw new IOException("FileSystem::allocateBlocksForFile: Invalid inode number.");
+        }
 
-        // TODO: replace this line with your code
+        int requiredBlocks = (int) Math.ceil((double) numBytes / Disk.BLOCK_SIZE);
+        if (requiredBlocks > INode.NUM_BLOCK_POINTERS) {
+            throw new IOException("FileSystem::allocateBlocksForFile: File too large for available block pointers.");
+        }
 
-        return null;
+        byte[] freeBlockList = diskDevice.readFreeBlockList();
+        List<Integer> allocatedBlocks = new ArrayList<>();
+
+        // Find free blocks
+        for (int block = 0; block < Disk.NUM_BLOCKS && allocatedBlocks.size() < requiredBlocks; block++) {
+            int byteIndex = block / 8;
+            int bitIndex = block % 8;
+            int mask = 1 << bitIndex;
+
+            // Check if block is free (bit is 0)
+            if ((freeBlockList[byteIndex] & mask) == 0) {
+                // Mark block as allocated
+                freeBlockList[byteIndex] |= mask;
+                allocatedBlocks.add(block);
+            }
+        }
+
+        if (allocatedBlocks.size() < requiredBlocks) {
+            throw new IOException("FileSystem::allocateBlocksForFile: Not enough free blocks.");
+        }
+
+        // Save the updated free block list
+        diskDevice.writeFreeBlockList(freeBlockList);
+
+        // Clear old block pointers and set new ones
+        for (int i = 0; i < INode.NUM_BLOCK_POINTERS; i++) {
+            if (i < allocatedBlocks.size()) {
+                this.iNodeForFile.setBlockPointer(i, allocatedBlocks.get(i));
+            } else {
+                this.iNodeForFile.setBlockPointer(i, -1);
+            }
+        }
+
+        return allocatedBlocks.stream().mapToInt(Integer::intValue).toArray();
     }
 
     /**
      * Add your Javadoc documentation for this method
      */
-    public void deallocateBlocksForFile(int iNodeNumber) {
-        // TODO: replace this line with your code
+    private void deallocateBlocksForFile(int iNodeNumber) throws IOException {
+        if (iNodeNumber < 0 || iNodeNumber >= Disk.NUM_INODES) {
+            throw new IOException("FileSystem::deallocateBlocksForFile: Invalid inode number.");
+        }
+
+        // Read the inode from disk
+        INode inode = diskDevice.readInode(iNodeNumber);
+        if (inode == null) {
+            throw new IOException("FileSystem::deallocateBlocksForFile: Inode is null.");
+        }
+
+        byte[] freeBlockList = diskDevice.readFreeBlockList();
+
+        // Free all blocks used by the file
+        for (int i = 0; i < INode.NUM_BLOCK_POINTERS; i++) {
+            int blockNumber = inode.getBlockPointer(i);
+            if (blockNumber == -1) break;
+
+            // Clear the bit in free block list
+            int byteIndex = blockNumber / 8;
+            int bitIndex = blockNumber % 8;
+            freeBlockList[byteIndex] &= ~(1 << bitIndex);
+
+            // Clear the block pointer
+            inode.setBlockPointer(i, -1);
+        }
+
+        // Update free block list and inode
+        diskDevice.writeFreeBlockList(freeBlockList);
+        diskDevice.writeInode(inode, iNodeNumber);
     }
-
-    // You may add any private method after this comment
-
 }
