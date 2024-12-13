@@ -165,103 +165,51 @@ public class FileSystem {
      * Add your Javadoc documentation for this method
      */
     //public
-    private int[] allocateBlocksForFile(int iNodeNumber, int numBytes)
-            throws IOException {
-
-        // TODO: replace this line with your code
-
-        int numOfBlocksNeeded = (int) Math.ceil((double) numBytes / Disk.BLOCK_SIZE);
-
-        if (numBytes < 0) {
-            throw new IllegalArgumentException("Number of bytes cannot be negative");
+    private int[] allocateBlocksForFile(int iNodeNumber, int numBytes) throws IOException {
+        if (iNodeNumber < 0 || iNodeNumber >= Disk.NUM_INODES) {
+            throw new IOException("FileSystem::allocateBlocksForFile: Invalid inode number.");
         }
 
-        if (numOfBlocksNeeded == 0) {
-            numOfBlocksNeeded = 1;
+        int requiredBlocks = (int) Math.ceil((double) numBytes / Disk.BLOCK_SIZE);
+        if (requiredBlocks > INode.NUM_BLOCK_POINTERS) {
+            throw new IOException("FileSystem::allocateBlocksForFile: File too large for available block pointers.");
         }
 
-        int[] blockPointers = new int[numOfBlocksNeeded];
-        int allocatedCount = 0;
+        byte[] freeBlockList = diskDevice.readFreeBlockList();
+        List<Integer> allocatedBlocks = new ArrayList<>();
 
-        while (allocatedCount < numOfBlocksNeeded) {
-            int blockIndex = freeBlockList.getNextFreeBlock();
+        // Find free blocks
+        for (int block = 0; block < Disk.NUM_BLOCKS && allocatedBlocks.size() < requiredBlocks; block++) {
+            int byteIndex = block / 8;
+            int bitIndex = block % 8;
+            int mask = 1 << bitIndex;
 
-            if (blockIndex == -1) {
-
-                for (int i = 0; i < allocatedCount; i++) {
-                    freeBlockList.deallocateBlock(blockPointers[i]);
-                }
-                throw new IOException("Not enough free blocks available");
+            // Check if block is free (bit is 0)
+            if ((freeBlockList[byteIndex] & mask) == 0) {
+                // Mark block as allocated
+                freeBlockList[byteIndex] |= mask;
+                allocatedBlocks.add(block);
             }
-
-            blockPointers[allocatedCount] = blockIndex;
-            freeBlockList.allocateBlock(blockIndex);
-            allocatedCount++;
         }
 
-        try {
-            for (int i = 0; i < numOfBlocksNeeded; i++) {
-                iNodeForFile.setBlockPointer(i, blockPointers[i]);
-            }
-            iNodeForFile.setSize(numBytes);
-
-            diskDevice.writeFreeBlockList(freeBlockList.getFreeBlockList());
-
-            return blockPointers;
-        } catch (Exception e) {
-
-            for (int i = 0; i < numOfBlocksNeeded; i++) {
-                freeBlockList.deallocateBlock(blockPointers[i]);
-            }
-            throw new IOException("Failed to update", e);
+        if (allocatedBlocks.size() < requiredBlocks) {
+            throw new IOException("FileSystem::allocateBlocksForFile: Not enough free blocks.");
         }
+
+        // Save the updated free block list
+        diskDevice.writeFreeBlockList(freeBlockList);
+
+        // Clear old block pointers and set new ones
+        for (int i = 0; i < INode.NUM_BLOCK_POINTERS; i++) {
+            if (i < allocatedBlocks.size()) {
+                this.iNodeForFile.setBlockPointer(i, allocatedBlocks.get(i));
+            } else {
+                this.iNodeForFile.setBlockPointer(i, -1);
+            }
+        }
+
+        return allocatedBlocks.stream().mapToInt(Integer::intValue).toArray();
     }
-    public class FreeBlockList {
-        private byte[] freeBlockList;
-
-        public int getNextFreeBlock() {
-            if (freeBlockList == null) {
-                return -1;
-            }
-
-            for (int byteIndex = 0; byteIndex < freeBlockList.length; byteIndex++) {
-                byte currentByte = freeBlockList[byteIndex];
-
-                if ((currentByte & 0xFF) != 0xFF) {
-
-                    for (int bitIndex = 0; bitIndex < 8; bitIndex++) {
-
-                        if ((currentByte & (1 << bitIndex)) == 0) {
-
-                            return (byteIndex * 8) + bitIndex;
-                        }
-                    }
-                }
-            }
-
-
-            return -1;
-        }
-
-        public void allocateBlock(int blockNumber) {
-            if (blockNumber < 0 || freeBlockList == null) {
-                return;
-            }
-
-            int byteIndex = blockNumber / 8;
-            int bitIndex = blockNumber % 8;
-
-            if (byteIndex < freeBlockList.length) {
-                freeBlockList[byteIndex] |= (1 << bitIndex);
-            }
-        }
-                //Ceasar be taking this
-                // Churros
-    //public void allocateBlock(int INodeNumber):
-    //            return allocateBlocksForFile(INodeNumber)
-        return null;
-    }
-
     /**
      * Add your Javadoc documentation for this method
      */
