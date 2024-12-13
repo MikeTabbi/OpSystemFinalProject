@@ -1,7 +1,8 @@
 package filesystem;
+import filesystem.Disk;
+import filesystem.INode;
 
 import java.io.IOException;
-
 
 public class FileSystem {
     private Disk diskDevice;
@@ -29,8 +30,8 @@ public class FileSystem {
         for (int i = 0; i < Disk.NUM_INODES && !isCreated; i++) {
             tmpINode = diskDevice.readInode(i);
             String name = tmpINode.getFileName();
-            if (name.trim().equals(fileName)){
-                throw new IOException("FileSystem::create: "+fileName+
+            if (name != null && name.trim().equals(fileName)) {
+                throw new IOException("FileSystem::create: " + fileName +
                         " already exists");
             } else if (tmpINode.getFileName() == null) {
                 this.iNodeForFile = new INode();
@@ -58,11 +59,6 @@ public class FileSystem {
         boolean isFound = false;
         int inodeNumForDeletion = -1;
 
-        /**
-         * Find the non-null named inode that matches,
-         * If you find it, set its file name to null
-         * to indicate it is unused
-         */
         for (int i = 0; i < Disk.NUM_INODES && !isFound; i++) {
             tmpINode = diskDevice.readInode(i);
 
@@ -75,10 +71,6 @@ public class FileSystem {
             }
         }
 
-        /***
-         * If file found, go ahead and deallocate its
-         * blocks and null out the filename.
-         */
         if (isFound) {
             deallocateBlocksForFile(inodeNumForDeletion);
             tmpINode.setFileName(null);
@@ -88,7 +80,6 @@ public class FileSystem {
             this.iNodeNumber = -1;
         }
     }
-
 
     /***
      * Makes the file available for reading/writing
@@ -123,15 +114,14 @@ public class FileSystem {
         return this.fileDescriptor;
     }
 
-
     /***
      * Closes the file
      *
      * @throws IOException If disk is not accessible for writing
      */
     public void close(int fileDescriptor) throws IOException {
-        if (fileDescriptor != this.iNodeNumber){
-            throw new IOException("FileSystem::close: file descriptor, "+
+        if (fileDescriptor != this.iNodeNumber) {
+            throw new IOException("FileSystem::close: file descriptor, " +
                     fileDescriptor + " does not match file descriptor " +
                     "of open file");
         }
@@ -141,44 +131,99 @@ public class FileSystem {
         this.iNodeNumber = -1;
     }
 
-
     /**
-     * Add your Javadoc documentation for this method
+     * Reads the content of a file based on its file descriptor.
+     *
+     * @param fileDescriptor The file descriptor of the file
+     * @return The content of the file as a String
+     * @throws IOException If an I/O error occurs
      */
     public String read(int fileDescriptor) throws IOException {
-        // TODO: Replace this line with your code
-        return null;
+        INode inode = diskDevice.readInode(fileDescriptor);
+        if (inode.getFileName() == null) {
+            throw new IOException("File not found");
+        }
+
+        StringBuilder data = new StringBuilder();
+
+        for (int i = 0; i < INode.NUM_BLOCK_POINTERS; i++) {
+            int blockPointer = inode.getBlockPointer(i);
+            if (blockPointer != -1) {
+                byte[] blockData = diskDevice.readDataBlock(blockPointer);
+                data.append(new String(blockData).trim());
+            }
+        }
+
+        return data.toString();
     }
 
-
     /**
-     * Add your Javadoc documentation for this method
+     * Writes data to a file based on its file descriptor.
+     *
+     * @param fileDescriptor The file descriptor of the file
+     * @param data           The data to write to the file
+     * @throws IOException If an I/O error occurs
      */
     public void write(int fileDescriptor, String data) throws IOException {
-
-        // TODO: Replace this line with your code
-
+        // Implement write logic here
     }
 
-
     /**
-     * Add your Javadoc documentation for this method
+     * Allocates blocks for a file based on its inode number and required bytes.
+     *
+     * @param iNodeNumber The inode number of the file
+     * @param numBytes    The number of bytes to allocate
+     * @return The allocated block indices
+     * @throws IOException If an I/O error occurs
      */
-    private int[] allocateBlocksForFile(int iNodeNumber, int numBytes)
-            throws IOException {
-
-        // TODO: replace this line with your code
-
+    public int[] allocateBlocksForFile(int iNodeNumber, int numBytes) throws IOException {
+        // Implement allocation logic here
         return null;
     }
 
     /**
-     * Add your Javadoc documentation for this method
+     * Deallocates the blocks used by a file and updates the inode and free block list.
+     *
+     * @param iNodeNumber The inode number of the file whose blocks are to be deallocated
      */
-    private void deallocateBlocksForFile(int iNodeNumber) {
-        // TODO: replace this line with your code
+    public void deallocateBlocksForFile(int iNodeNumber) {
+        try {
+            // Step 1: Read the inode for the file
+            INode inode = diskDevice.readInode(iNodeNumber);
+
+            // Step 2: Read the free block list from the disk
+            byte[] freeBlockList = diskDevice.readFreeBlockList();
+
+            // Step 3: Loop through all block pointers in the inode
+            for (int i = 0; i < INode.NUM_BLOCK_POINTERS; i++) {
+                int blockPointer = inode.getBlockPointer(i);
+
+                if (blockPointer != -1) {
+                    int byteIndex = blockPointer / 8;
+                    int bitIndex = blockPointer % 8;
+
+                    freeBlockList[byteIndex] &= ~(1 << bitIndex);
+
+                    inode.setBlockPointer(i, -1);
+                }
+            }
+
+            // Step 4: Write back the updated free block list to the disk
+            diskDevice.writeFreeBlockList(freeBlockList);
+
+            // Step 5: Update the inode to clear its file name and size
+            inode.setFileName(null);
+            inode.setSize(0);
+
+            // Step 6: Write the updated inode back to the disk
+            diskDevice.writeInode(inode, iNodeNumber);
+
+        } catch (IOException e) {
+            System.err.println("Error during deallocation: " + e.getMessage());
+        }
     }
 
-    // You may add any private method after this comment
-
+    public Disk getDiskDevice() {
+        return this.diskDevice;
+    }
 }
